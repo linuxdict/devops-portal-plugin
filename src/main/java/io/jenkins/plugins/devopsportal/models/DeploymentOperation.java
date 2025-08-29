@@ -4,6 +4,7 @@ import edu.umd.cs.findbugs.annotations.NonNull;
 import hudson.Extension;
 import hudson.model.Describable;
 import hudson.model.Descriptor;
+import hudson.model.Result;
 import hudson.model.Run;
 import hudson.util.CopyOnWriteList;
 import io.jenkins.plugins.devopsportal.Messages;
@@ -41,6 +42,7 @@ public class DeploymentOperation implements Describable<DeploymentOperation>, Se
     private String buildURL;
     private String buildBranch;
     private String buildCommit;
+    private Boolean failure;
 
     private final List<String> tags;
 
@@ -147,6 +149,33 @@ public class DeploymentOperation implements Describable<DeploymentOperation>, Se
         }
     }
 
+    public Optional<Boolean> isFailure() {
+        return Optional.ofNullable(failure);
+    }
+
+    @DataBoundSetter
+    public void setFailure(boolean failure) {
+        this.failure = failure;
+    }
+
+    public boolean setFailure(Result result) {
+        if (result == null) {
+            return false;
+        }
+        if (result.isCompleteBuild()) {
+            this.failure = result.isBetterOrEqualTo(Result.FAILURE);
+            return true;
+        }
+        return false;
+    }
+
+    public String getSuccessState() {
+        if (failure == null) {
+            return "unknown";
+        }
+        return failure ? "failure" : "success";
+    }
+
     @SuppressWarnings("unused")
     public boolean isBranchProvided() {
         return buildBranch != null && !buildBranch.isEmpty();
@@ -222,7 +251,8 @@ public class DeploymentOperation implements Describable<DeploymentOperation>, Se
 
         public synchronized List<DeploymentOperation> getRunOperations() {
             List<DeploymentOperation> retVal = new ArrayList<>(runOperations.getView());
-            retVal.sort(Comparator.comparing(DeploymentOperation::getApplicationName));
+            retVal.sort(Comparator.comparing(DeploymentOperation::getApplicationName,
+                    Comparator.nullsLast(Comparator.naturalOrder())));
             return retVal;
         }
 
@@ -236,22 +266,22 @@ public class DeploymentOperation implements Describable<DeploymentOperation>, Se
         public Optional<DeploymentOperation> getLastDeploymentByService(String serviceId) {
             return getRunOperations()
                     .stream()
-                    .filter(item -> serviceId.equals(item.getServiceId()))
+                    .filter(item -> Objects.equals(serviceId, item.getServiceId()))
                     .max(Comparator.comparingLong(DeploymentOperation::getTimestamp));
         }
 
         public Optional<DeploymentOperation> getLastDeploymentByApplication(String applicationName, String applicationVersion) {
             return getRunOperations()
                     .stream()
-                    .filter(item -> item.getApplicationName().equals(applicationName))
-                    .filter(item -> item.getApplicationVersion().equals(applicationVersion))
+                    .filter(item -> Objects.equals(item.getApplicationName(), applicationName))
+                    .filter(item -> Objects.equals(item.getApplicationVersion(), applicationVersion))
                     .max(Comparator.comparingLong(DeploymentOperation::getTimestamp));
         }
 
         public List<DeploymentOperation> getDeploymentsByService(String serviceId) {
             return getRunOperations()
                     .stream()
-                    .filter(item -> serviceId.equals(item.getServiceId()))
+                    .filter(item -> Objects.equals(serviceId, item.getServiceId()))
                     .sorted((a, b) -> Long.compare(b.getTimestamp(), a.getTimestamp()))
                     .collect(Collectors.toList());
         }
@@ -259,9 +289,9 @@ public class DeploymentOperation implements Describable<DeploymentOperation>, Se
         public Optional<DeploymentOperation> getDeploymentByRun(String environmentId, String jobName, String runNumber) {
             return getRunOperations()
                     .stream()
-                    .filter(item -> environmentId.equals(item.getServiceId()))
-                    .filter(item -> jobName.equals(item.getBuildJob()))
-                    .filter(item -> runNumber.equals(item.getBuildNumber()))
+                    .filter(item -> Objects.equals(environmentId, item.getServiceId()))
+                    .filter(item -> Objects.equals(jobName, item.getBuildJob()))
+                    .filter(item -> Objects.equals(runNumber, item.getBuildNumber()))
                     .max((a, b) -> Long.compare(b.getTimestamp(), a.getTimestamp()));
         }
 
