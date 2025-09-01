@@ -24,11 +24,53 @@ public final class JenkinsUtils {
         if (branchName != null && branchName.isEmpty()) {
             branchName = null;
         }
-        Job<?, ?> job = findJobByName(jobName, branchName, Jenkins.get().getItems());
+        Job<?, ?> job = findJobByPath(jobName, branchName);
         if (job == null) {
             return Optional.empty();
         }
         return Optional.ofNullable(job.getBuild(buildNumber));
+    }
+
+    /**
+     * Find a job by its path, handling folder navigation properly.
+     * For example: "folder1/folder2/jobName" will navigate through folders to find the job.
+     */
+    public static Job<?, ?> findJobByPath(String jobPath, String branchName) {
+        if (Jenkins.getInstanceOrNull() == null || jobPath == null) {
+            return null;
+        }
+
+        // Split the path into folder parts and job name
+        String[] pathParts = jobPath.split("/");
+        String actualJobName = pathParts[pathParts.length - 1];
+
+        // Start from Jenkins root
+        ItemGroup<?> currentGroup = Jenkins.get();
+
+        // Navigate through folders
+        for (int i = 0; i < pathParts.length - 1; i++) {
+            Item item = currentGroup.getItem(pathParts[i]);
+            if (item instanceof ItemGroup) {
+                currentGroup = (ItemGroup<?>) item;
+            } else {
+                return null; // Folder not found
+            }
+        }
+
+        // Now find the job in the final folder
+        Item jobItem = currentGroup.getItem(actualJobName);
+
+        // Handle multi-branch pipelines
+        if (branchName != null && jobItem instanceof ItemGroup) {
+            Item branchItem = ((ItemGroup<?>) jobItem).getItem(branchName);
+            if (branchItem instanceof Job) {
+                return (Job<?, ?>) branchItem;
+            }
+        } else if (jobItem instanceof Job) {
+            return (Job<?, ?>) jobItem;
+        }
+
+        return null;
     }
 
     public static Job<?, ?> findJobByName(String jobName, String itemName, Collection<? extends TopLevelItem> items) {
