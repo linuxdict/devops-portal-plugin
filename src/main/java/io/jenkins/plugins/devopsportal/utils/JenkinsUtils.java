@@ -28,7 +28,22 @@ public final class JenkinsUtils {
         if (job == null) {
             return Optional.empty();
         }
-        return Optional.ofNullable(job.getBuild(buildNumber));
+
+        // Try to get build by number - Jenkins getBuild() method accepts both string and int
+        try {
+            // First try with string (for build IDs)
+            Run<?, ?> run = job.getBuild(buildNumber);
+            if (run != null) {
+                return Optional.of(run);
+            }
+
+            // If string failed, try converting to integer
+            int buildNum = Integer.parseInt(buildNumber);
+            return Optional.ofNullable(job.getBuildByNumber(buildNum));
+        } catch (NumberFormatException e) {
+            // If buildNumber is not a valid integer, try as string only
+            return Optional.ofNullable(job.getBuild(buildNumber));
+        }
     }
 
     /**
@@ -36,20 +51,32 @@ public final class JenkinsUtils {
      * For example: "folder1/folder2/jobName" will navigate through folders to find the job.
      */
     public static Job<?, ?> findJobByPath(String jobPath, String branchName) {
-        if (Jenkins.getInstanceOrNull() == null || jobPath == null) {
+        if (Jenkins.getInstanceOrNull() == null || jobPath == null || jobPath.trim().isEmpty()) {
             return null;
         }
 
         // Split the path into folder parts and job name
         String[] pathParts = jobPath.split("/");
+        if (pathParts.length == 0) {
+            return null;
+        }
+
         String actualJobName = pathParts[pathParts.length - 1];
+        if (actualJobName.isEmpty()) {
+            return null;
+        }
 
         // Start from Jenkins root
         ItemGroup<?> currentGroup = Jenkins.get();
 
         // Navigate through folders
         for (int i = 0; i < pathParts.length - 1; i++) {
-            Item item = currentGroup.getItem(pathParts[i]);
+            String folderName = pathParts[i];
+            if (folderName.isEmpty()) {
+                continue; // Skip empty path parts
+            }
+
+            Item item = currentGroup.getItem(folderName);
             if (item instanceof ItemGroup) {
                 currentGroup = (ItemGroup<?>) item;
             } else {

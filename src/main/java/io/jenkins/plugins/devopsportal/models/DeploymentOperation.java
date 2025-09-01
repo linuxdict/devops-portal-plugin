@@ -212,9 +212,9 @@ public class DeploymentOperation implements Describable<DeploymentOperation>, Se
     }
 
     public String getBuildStatusClass() {
-        Run<?, ?> job = JenkinsUtils.getBuild(buildJob, buildBranch, buildNumber).orElse(null);
-        if (job != null) {
-            return job.getBuildStatusIconClassName();
+        Run<?, ?> run = JenkinsUtils.getBuild(buildJob, buildBranch, buildNumber).orElse(null);
+        if (run != null) {
+            return run.getBuildStatusIconClassName();
         }
         return "icon-disabled";
     }
