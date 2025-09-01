@@ -143,13 +143,84 @@ public class ApplicationBuildStatus implements Describable<ApplicationBuildStatu
      */
     @SuppressWarnings("unused")
     public String getDisplayJobName() {
-        if (buildJob == null || buildJob.isEmpty()) {
-            return buildJob;
+        String jobPath = getFullJobPath();
+        if (jobPath == null || jobPath.isEmpty()) {
+            return buildJob; // fallback to original
         }
 
         // Extract the last part of the path (the actual job name)
-        String[] pathParts = buildJob.split("/");
+        String[] pathParts = jobPath.split("/");
         return pathParts[pathParts.length - 1];
+    }
+
+    /**
+     * Get the full job path, trying to extract it from buildURL if buildJob is incomplete
+     */
+    @SuppressWarnings("unused")
+    public String getFullJobPath() {
+        // First try the buildJob field
+        if (buildJob != null && !buildJob.isEmpty()) {
+            // If buildJob contains a slash, it's likely the full path
+            if (buildJob.contains("/")) {
+                return buildJob;
+            }
+            // If buildJob doesn't contain slash but buildURL does, try to extract from URL
+            if (buildURL != null && buildURL.contains("/job/")) {
+                String extractedPath = extractJobPathFromURL(buildURL);
+                if (extractedPath != null && !extractedPath.equals(buildJob)) {
+                    return extractedPath;
+                }
+            }
+            return buildJob;
+        }
+
+        // If buildJob is empty, try to extract from buildURL
+        if (buildURL != null && buildURL.contains("/job/")) {
+            return extractJobPathFromURL(buildURL);
+        }
+
+        return buildJob; // fallback
+    }
+
+    /**
+     * Extract job path from Jenkins URL
+     * Example: "http://host/job/folder/job/jobname/123/" -> "folder/jobname"
+     */
+    private String extractJobPathFromURL(String url) {
+        if (url == null || !url.contains("/job/")) {
+            return null;
+        }
+
+        try {
+            // Find all /job/ segments in the URL
+            String[] parts = url.split("/job/");
+            if (parts.length < 2) {
+                return null;
+            }
+
+            StringBuilder jobPath = new StringBuilder();
+            // Skip the first part (everything before first /job/)
+            for (int i = 1; i < parts.length; i++) {
+                String part = parts[i];
+                // Extract the job/folder name (everything before the next slash or end)
+                int slashIndex = part.indexOf('/');
+                String jobName = slashIndex > 0 ? part.substring(0, slashIndex) : part;
+
+                if (jobPath.length() > 0) {
+                    jobPath.append("/");
+                }
+                jobPath.append(jobName);
+
+                // If this part doesn't end with another /job/, we're done
+                if (slashIndex < 0 || !part.substring(slashIndex).startsWith("/job/")) {
+                    break;
+                }
+            }
+
+            return jobPath.toString();
+        } catch (Exception e) {
+            return null; // If URL parsing fails, return null
+        }
     }
 
     @Override
@@ -196,7 +267,8 @@ public class ApplicationBuildStatus implements Describable<ApplicationBuildStatu
     }
 
     public String getBuildStatusClass() {
-        Run<?, ?> run = JenkinsUtils.getBuild(buildJob, buildBranch, buildNumber).orElse(null);
+        String jobPath = getFullJobPath();
+        Run<?, ?> run = JenkinsUtils.getBuild(jobPath, buildBranch, buildNumber).orElse(null);
         if (run != null) {
             return run.getBuildStatusIconClassName();
         }
