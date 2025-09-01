@@ -98,6 +98,41 @@ public class RunDashboard extends View {
         return TimeAgoUtils.toDuration((Instant.now().getEpochSecond() - timestamp) * 1000L);
     }
 
+    /**
+     * Format deployment display name to show just the job name and build number.
+     * For example: "test_devops_p1 #3" instead of "sysfoo #3"
+     */
+    @SuppressWarnings("unused")
+    public String formatDeploymentDisplayName(DeploymentOperation deployment) {
+        if (deployment == null) {
+            return "Unknown";
+        }
+
+        String jobName = deployment.getDisplayJobName();
+        String buildNumber = deployment.getBuildNumber();
+
+        if (jobName == null || jobName.isEmpty()) {
+            jobName = "Unknown Job";
+        }
+
+        if (buildNumber == null || buildNumber.isEmpty()) {
+            return jobName;
+        }
+
+        return jobName + " #" + buildNumber;
+    }
+
+    /**
+     * Helper method for debugging deployment build resolution issues.
+     */
+    @SuppressWarnings("unused")
+    public String getDeploymentDebugInfo(DeploymentOperation deployment) {
+        if (deployment == null) {
+            return "Deployment is null";
+        }
+        return deployment.getBuildResolutionDebugInfo();
+    }
+
     public String getRootURL() {
         return Objects.requireNonNull(Jenkins.getInstanceOrNull()).getRootUrl();
     }

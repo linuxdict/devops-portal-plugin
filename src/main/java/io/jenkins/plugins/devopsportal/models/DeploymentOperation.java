@@ -181,6 +181,67 @@ public class DeploymentOperation implements Describable<DeploymentOperation>, Se
         return buildBranch != null && !buildBranch.isEmpty();
     }
 
+    /**
+     * Get the display-friendly job name by extracting just the job name from the full folder path.
+     * For example: "folder1/folder2/jobName" becomes "jobName"
+     */
+    @SuppressWarnings("unused")
+    public String getDisplayJobName() {
+        if (buildJob == null || buildJob.isEmpty()) {
+            return buildJob;
+        }
+
+        // Extract the last part of the path (the actual job name)
+        String[] pathParts = buildJob.split("/");
+        return pathParts[pathParts.length - 1];
+    }
+
+    /**
+     * Get the folder path without the job name.
+     * For example: "folder1/folder2/jobName" becomes "folder1/folder2"
+     */
+    @SuppressWarnings("unused")
+    public String getFolderPath() {
+        if (buildJob == null || buildJob.isEmpty() || !buildJob.contains("/")) {
+            return null;
+        }
+
+        int lastSlashIndex = buildJob.lastIndexOf("/");
+        return buildJob.substring(0, lastSlashIndex);
+    }
+
+    /**
+     * Debug method to check if the job and build can be resolved.
+     * This helps identify folder path issues.
+     */
+    @SuppressWarnings("unused")
+    public String getBuildResolutionDebugInfo() {
+        StringBuilder debug = new StringBuilder();
+        debug.append("Job: ").append(buildJob).append(", ");
+        debug.append("Branch: ").append(buildBranch).append(", ");
+        debug.append("Build: ").append(buildNumber).append(", ");
+
+        try {
+            Job<?, ?> job = JenkinsUtils.findJobByPath(buildJob, buildBranch);
+            if (job != null) {
+                debug.append("Job found: ").append(job.getClass().getSimpleName()).append(", ");
+                Run<?, ?> run = job.getBuild(buildNumber);
+                if (run != null) {
+                    debug.append("Run found: ").append(run.getClass().getSimpleName()).append(", ");
+                    debug.append("Status: ").append(run.getBuildStatusIconClassName());
+                } else {
+                    debug.append("Run not found");
+                }
+            } else {
+                debug.append("Job not found");
+            }
+        } catch (Exception ex) {
+            debug.append("Error: ").append(ex.getMessage());
+        }
+
+        return debug.toString();
+    }
+
     @Override
     public Descriptor<DeploymentOperation> getDescriptor() {
         return Jenkins.get().getDescriptorByType(DeploymentOperation.DescriptorImpl.class);
@@ -226,11 +287,95 @@ public class DeploymentOperation implements Describable<DeploymentOperation>, Se
     }
 
     public String getBuildStatusClass() {
-        Run<?, ?> job = JenkinsUtils.getBuild(buildJob, buildBranch, buildNumber).orElse(null);
-        if (job != null) {
-            return job.getBuildStatusIconClassName();
+        if (buildJob == null || buildJob.trim().isEmpty()) {
+            return "icon-disabled";
         }
+        if (buildNumber == null || buildNumber.trim().isEmpty()) {
+            return "icon-disabled";
+        }
+
+        try {
+            // First try the direct build lookup using JenkinsUtils
+            Run<?, ?> run = JenkinsUtils.getBuild(buildJob, buildBranch, buildNumber).orElse(null);
+            if (run != null) {
+                String statusClass = run.getBuildStatusIconClassName();
+                return statusClass != null ? statusClass : "icon-disabled";
+            }
+
+            // If direct lookup fails, try to get the job first, then the build
+            Job<?, ?> job = JenkinsUtils.findJobByPath(buildJob, buildBranch);
+            if (job != null) {
+                // Try multiple ways to get the build
+                run = findBuildInJob(job, buildNumber);
+                if (run != null) {
+                    String statusClass = run.getBuildStatusIconClassName();
+                    return statusClass != null ? statusClass : "icon-disabled";
+                }
+            }
+
+            // Last resort: try the old findJobByName approach
+            job = JenkinsUtils.findJobByName(buildJob, buildBranch, Jenkins.get().getItems());
+            if (job != null) {
+                run = findBuildInJob(job, buildNumber);
+                if (run != null) {
+                    String statusClass = run.getBuildStatusIconClassName();
+                    return statusClass != null ? statusClass : "icon-disabled";
+                }
+            }
+
+        } catch (Exception ex) {
+            // Log the error for debugging but don't break the UI
+            System.err.println("Error getting build status for job: " + buildJob +
+                             ", branch: " + buildBranch +
+                             ", build: " + buildNumber +
+                             " - " + ex.getMessage());
+        }
+
         return "icon-disabled";
+    }
+
+    /**
+     * Helper method to find a build in a job using multiple strategies.
+     */
+    private Run<?, ?> findBuildInJob(Job<?, ?> job, String buildNumber) {
+        if (job == null || buildNumber == null) {
+            return null;
+        }
+
+        try {
+            // Try by build number string first
+            Run<?, ?> run = job.getBuild(buildNumber);
+            if (run != null) {
+                return run;
+            }
+
+            // Try by build number integer if it's numeric
+            if (buildNumber.matches("\\d+")) {
+                try {
+                    int buildNum = Integer.parseInt(buildNumber);
+                    run = job.getBuildByNumber(buildNum);
+                    if (run != null) {
+                        return run;
+                    }
+                } catch (NumberFormatException ex) {
+                    // Not a valid number, continue with other methods
+                }
+            }
+
+            // Try to search through all builds (less efficient but thorough)
+            for (Run<?, ?> build : job.getBuilds()) {
+                if (buildNumber.equals(String.valueOf(build.getNumber())) ||
+                    buildNumber.equals(build.getId()) ||
+                    buildNumber.equals(build.getDisplayName())) {
+                    return build;
+                }
+            }
+
+        } catch (Exception ex) {
+            // Ignore individual lookup failures and try next method
+        }
+
+        return null;
     }
 
     @Extension
