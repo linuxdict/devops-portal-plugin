@@ -169,6 +169,22 @@ public class DeploymentOperation implements Describable<DeploymentOperation>, Se
     }
 
     /**
+     * Debug method to see what values are being used
+     */
+    @SuppressWarnings("unused")
+    public String getDebugInfo() {
+        StringBuilder debug = new StringBuilder();
+        debug.append("buildJob=").append(buildJob);
+        debug.append(", buildURL=").append(buildURL);
+        debug.append(", fullJobPath=").append(getFullJobPath());
+        debug.append(", displayJobName=").append(getDisplayJobName());
+        if (buildURL != null) {
+            debug.append(", extractedFromURL=").append(extractJobPathFromURL(buildURL));
+        }
+        return debug.toString();
+    }
+
+    /**
      * Get the full job path, trying to extract it from buildURL if buildJob is incomplete
      */
     @SuppressWarnings("unused")
@@ -182,7 +198,8 @@ public class DeploymentOperation implements Describable<DeploymentOperation>, Se
             // If buildJob doesn't contain slash but buildURL does, try to extract from URL
             if (buildURL != null && buildURL.contains("/job/")) {
                 String extractedPath = extractJobPathFromURL(buildURL);
-                if (extractedPath != null && !extractedPath.equals(buildJob)) {
+                if (extractedPath != null && extractedPath.contains("/")) {
+                    // If extracted path has folders and is different from buildJob, use it
                     return extractedPath;
                 }
             }
@@ -191,7 +208,10 @@ public class DeploymentOperation implements Describable<DeploymentOperation>, Se
 
         // If buildJob is empty, try to extract from buildURL
         if (buildURL != null && buildURL.contains("/job/")) {
-            return extractJobPathFromURL(buildURL);
+            String extractedPath = extractJobPathFromURL(buildURL);
+            if (extractedPath != null) {
+                return extractedPath;
+            }
         }
 
         return buildJob; // fallback
@@ -207,28 +227,48 @@ public class DeploymentOperation implements Describable<DeploymentOperation>, Se
         }
 
         try {
-            // Find all /job/ segments in the URL
-            String[] parts = url.split("/job/");
-            if (parts.length < 2) {
+            // Simplified approach: extract everything between /job/ segments
+            // Example: http://host/job/sysfoo/job/test_devops_p1/10/... -> sysfoo/test_devops_p1
+
+            int firstJobIndex = url.indexOf("/job/");
+            if (firstJobIndex == -1) {
                 return null;
             }
 
-            StringBuilder jobPath = new StringBuilder();
-            // Skip the first part (everything before first /job/)
-            for (int i = 1; i < parts.length; i++) {
-                String part = parts[i];
-                // Extract the job/folder name (everything before the next slash or end)
-                int slashIndex = part.indexOf('/');
-                String jobName = slashIndex > 0 ? part.substring(0, slashIndex) : part;
+            // Start after the first "/job/"
+            String remaining = url.substring(firstJobIndex + 5); // +5 for "/job/" length
 
+            StringBuilder jobPath = new StringBuilder();
+            boolean foundJobSegment = true;
+
+            while (foundJobSegment) {
+                // Find the next slash
+                int nextSlash = remaining.indexOf('/');
+                if (nextSlash == -1) {
+                    // No more slashes, take the rest as job name
+                    if (!remaining.isEmpty()) {
+                        if (jobPath.length() > 0) {
+                            jobPath.append("/");
+                        }
+                        jobPath.append(remaining);
+                    }
+                    break;
+                }
+
+                String segment = remaining.substring(0, nextSlash);
                 if (jobPath.length() > 0) {
                     jobPath.append("/");
                 }
-                jobPath.append(jobName);
+                jobPath.append(segment);
 
-                // If this part doesn't end with another /job/, we're done
-                if (slashIndex < 0 || !part.substring(slashIndex).startsWith("/job/")) {
-                    break;
+                // Check if the next part is another "/job/" segment
+                remaining = remaining.substring(nextSlash + 1);
+                if (remaining.startsWith("job/")) {
+                    // Skip the "job/" part and continue
+                    remaining = remaining.substring(4);
+                } else {
+                    // No more job segments
+                    foundJobSegment = false;
                 }
             }
 
