@@ -122,17 +122,6 @@ public class RunDashboard extends View {
         return jobName + " #" + buildNumber;
     }
 
-    /**
-     * Helper method for debugging deployment build resolution issues.
-     */
-    @SuppressWarnings("unused")
-    public String getDeploymentDebugInfo(DeploymentOperation deployment) {
-        if (deployment == null) {
-            return "Deployment is null";
-        }
-        return deployment.getBuildResolutionDebugInfo();
-    }
-
     public String getRootURL() {
         return Objects.requireNonNull(Jenkins.getInstanceOrNull()).getRootUrl();
     }
