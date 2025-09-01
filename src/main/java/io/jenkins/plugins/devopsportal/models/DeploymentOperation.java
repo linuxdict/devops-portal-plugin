@@ -152,6 +152,21 @@ public class DeploymentOperation implements Describable<DeploymentOperation>, Se
         return buildBranch != null && !buildBranch.isEmpty();
     }
 
+    /**
+     * Get the display-friendly job name by extracting just the job name from the full folder path.
+     * For example: "folder1/folder2/jobName" becomes "jobName"
+     */
+    @SuppressWarnings("unused")
+    public String getDisplayJobName() {
+        if (buildJob == null || buildJob.isEmpty()) {
+            return buildJob;
+        }
+
+        // Extract the last part of the path (the actual job name)
+        String[] pathParts = buildJob.split("/");
+        return pathParts[pathParts.length - 1];
+    }
+
     @Override
     public Descriptor<DeploymentOperation> getDescriptor() {
         return Jenkins.get().getDescriptorByType(DeploymentOperation.DescriptorImpl.class);
