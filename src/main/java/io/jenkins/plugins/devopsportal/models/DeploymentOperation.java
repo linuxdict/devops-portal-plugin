@@ -181,6 +181,132 @@ public class DeploymentOperation implements Describable<DeploymentOperation>, Se
         return buildBranch != null && !buildBranch.isEmpty();
     }
 
+    /**
+     * Get the display-friendly job name by extracting just the job name from the full folder path.
+     * For example: "folder1/folder2/jobName" becomes "jobName"
+     */
+    @SuppressWarnings("unused")
+    public String getDisplayJobName() {
+        String jobPath = getFullJobPath();
+        if (jobPath == null || jobPath.isEmpty()) {
+            return buildJob; // fallback to original
+        }
+
+        // Extract the last part of the path (the actual job name)
+        String[] pathParts = jobPath.split("/");
+        return pathParts[pathParts.length - 1];
+    }
+
+    /**
+     * Debug method to see what values are being used
+     */
+    @SuppressWarnings("unused")
+    public String getDebugInfo() {
+        StringBuilder debug = new StringBuilder();
+        debug.append("buildJob=").append(buildJob);
+        debug.append(", buildURL=").append(buildURL);
+        debug.append(", fullJobPath=").append(getFullJobPath());
+        debug.append(", displayJobName=").append(getDisplayJobName());
+        if (buildURL != null) {
+            debug.append(", extractedFromURL=").append(extractJobPathFromURL(buildURL));
+        }
+        return debug.toString();
+    }
+
+    /**
+     * Get the full job path, trying to extract it from buildURL if buildJob is incomplete
+     */
+    @SuppressWarnings("unused")
+    public String getFullJobPath() {
+        // First try the buildJob field
+        if (buildJob != null && !buildJob.isEmpty()) {
+            // If buildJob contains a slash, it's likely the full path
+            if (buildJob.contains("/")) {
+                return buildJob;
+            }
+            // If buildJob doesn't contain slash but buildURL does, try to extract from URL
+            if (buildURL != null && buildURL.contains("/job/")) {
+                String extractedPath = extractJobPathFromURL(buildURL);
+                if (extractedPath != null && extractedPath.contains("/")) {
+                    // If extracted path has folders and is different from buildJob, use it
+                    return extractedPath;
+                }
+            }
+            return buildJob;
+        }
+
+        // If buildJob is empty, try to extract from buildURL
+        if (buildURL != null && buildURL.contains("/job/")) {
+            String extractedPath = extractJobPathFromURL(buildURL);
+            if (extractedPath != null) {
+                return extractedPath;
+            }
+        }
+
+        return buildJob; // fallback
+    }
+
+    /**
+     * Extract job path from Jenkins URL
+     * Example: "http://host/job/folder/job/jobname/123/" -> "folder/jobname"
+     */
+    private String extractJobPathFromURL(String url) {
+        if (url == null || !url.contains("/job/")) {
+            return null;
+        }
+
+        try {
+            // Simplified approach: extract everything between /job/ segments
+            // Example: http://host/job/sysfoo/job/test_devops_p1/10/... -> sysfoo/test_devops_p1
+
+            int firstJobIndex = url.indexOf("/job/");
+            if (firstJobIndex == -1) {
+                return null;
+            }
+
+            // Start after the first "/job/"
+            String remaining = url.substring(firstJobIndex + 5); // +5 for "/job/" length
+
+            StringBuilder jobPath = new StringBuilder();
+            boolean foundJobSegment = true;
+
+            while (foundJobSegment) {
+                // Find the next slash
+                int nextSlash = remaining.indexOf('/');
+                if (nextSlash == -1) {
+                    // No more slashes, take the rest as job name
+                    if (!remaining.isEmpty()) {
+                        if (jobPath.length() > 0) {
+                            jobPath.append("/");
+                        }
+                        jobPath.append(remaining);
+                    }
+                    break;
+                }
+
+                String segment = remaining.substring(0, nextSlash);
+                if (jobPath.length() > 0) {
+                    jobPath.append("/");
+                }
+                jobPath.append(segment);
+
+                // Check if the next part is another "/job/" segment
+                remaining = remaining.substring(nextSlash + 1);
+                if (remaining.startsWith("job/")) {
+                    // Skip the "job/" part and continue
+                    remaining = remaining.substring(4);
+                } else {
+                    // No more job segments
+                    foundJobSegment = false;
+                }
+            }
+
+            return jobPath.toString();
+        } catch (Exception e) {
+            return null; // If URL parsing fails, return null
+        }
+    }
+
     @Override
     public Descriptor<DeploymentOperation> getDescriptor() {
         return Jenkins.get().getDescriptorByType(DeploymentOperation.DescriptorImpl.class);
@@ -226,9 +352,10 @@ public class DeploymentOperation implements Describable<DeploymentOperation>, Se
     }
 
     public String getBuildStatusClass() {
-        Run<?, ?> job = JenkinsUtils.getBuild(buildJob, buildBranch, buildNumber).orElse(null);
-        if (job != null) {
-            return job.getBuildStatusIconClassName();
+        String jobPath = getFullJobPath();
+        Run<?, ?> run = JenkinsUtils.getBuild(jobPath, buildBranch, buildNumber).orElse(null);
+        if (run != null) {
+            return run.getBuildStatusIconClassName();
         }
         return "icon-disabled";
     }

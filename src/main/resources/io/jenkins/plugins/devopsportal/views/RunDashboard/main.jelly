@@ -119,7 +119,7 @@
                             <j:if test="${deployment != null}">
                                 <span class="build-label">
                                     <l:icon class="${deployment.getBuildStatusClass()} icon-sm"/>
-                                    <a href="${deployment.buildURL}">${deployment.buildJob} #${deployment.buildNumber}</a>
+                                    <a href="${deployment.buildURL}">${deployment.displayJobName} #${deployment.buildNumber}</a>
                                 </span>
                                 <j:forEach var="tag" indexVar="i" items="${deployment.tags}">
                                     <span class="deployment-tag badge">
@@ -189,7 +189,7 @@
                                         <span class="build-label">
                                             <l:icon class="${deployment.getBuildStatusClass()} icon-sm"/>
                                             <a style="margin-left:.4rem" href="${deployment.buildURL}">
-                                                ${deployment.buildJob} #${deployment.buildNumber}
+                                                ${deployment.displayJobName} #${deployment.buildNumber}
                                             </a>
                                         </span>
                                     </td>
